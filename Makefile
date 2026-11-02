@@ -16,7 +16,7 @@ OBJ = .obj
 
 # Where the site is served, for the X card's links, and the X account it
 # belongs to (for example @soasme; empty leaves twitter:site out).
-SITE_URL = https://julin.ai/small-craft/
+SITE_URL = https://www.soasme.com/small-craft/
 X_SITE =
 
 # The web build: emcc (Emscripten), and raylib's sources, fetched once.

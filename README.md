@@ -67,7 +67,7 @@ break, place, choose the block and fly, and dragging anywhere else looks.
 
 `index.html` carries an X player card: a post linking the published page
 shows the game in a frame that plays it. `make build-web` points the card
-at `SITE_URL` (default `https://julin.ai/small-craft/`) and names
+at `SITE_URL` (default `https://www.soasme.com/small-craft/`) and names
 the X account in `X_SITE`, if set, for example
 `make build-web X_SITE=@handle`. The page must be served over HTTPS, and
 X decides whether to show a player card for a site; the card's image is
