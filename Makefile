@@ -46,7 +46,14 @@ $(OBJ)/spy: spy/cli.c spy/spy-std.c spy/spy-std.h spy/spy-std-modules.h $(OBJ)/s
 run: smallcraft
 	./smallcraft
 
+# The game without a window, on the spy command line, with stand-ins for
+# the host's modules (tests/raylib.py, noise.py, libm.py).
+test: $(OBJ)/spy
+	rm -rf $(OBJ)/test && mkdir -p $(OBJ)/test
+	cp tests/*.py $(OBJ)/test/ && ln -s ../../craft $(OBJ)/test/craft
+	cd $(OBJ)/test && ../spy test_game.py
+
 clean:
 	rm -rf smallcraft $(OBJ) assets
 
-.PHONY: run clean
+.PHONY: run test clean
