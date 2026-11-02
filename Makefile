@@ -14,6 +14,20 @@ SYSTEM = -lGL -lpthread -ldl -lrt -lX11
 endif
 OBJ = .obj
 
+# The web build: emcc (Emscripten), and raylib's sources, fetched once.
+EMCC = emcc
+RAYLIB_VERSION = 5.5
+RAYLIB_WEB = $(OBJ)/raylib-$(RAYLIB_VERSION)/src
+RAYLIB_MODULES = rcore rshapes rtextures rtext rmodels utils
+WEB_CFLAGS = -O2 -std=c11 -DPLATFORM_WEB -DGRAPHICS_API_OPENGL_ES3
+# raylib's web code uses EM_ASM, which needs GNU C.
+RAYLIB_WEB_CFLAGS = -O2 -std=gnu99 -DPLATFORM_WEB -DGRAPHICS_API_OPENGL_ES3
+WEB_LDFLAGS = -sUSE_GLFW=3 -sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2 \
+	-sALLOW_MEMORY_GROWTH=1 -sSTACK_SIZE=8388608 -sENVIRONMENT=web
+
+build-binary: smallcraft
+build: build-binary build-web
+
 smallcraft: smallcraft.c noise.c noise.h $(OBJ)/smallcraft_py.c $(OBJ)/spy.o
 	$(CC) $(GAME_CFLAGS) smallcraft.c noise.c $(OBJ)/smallcraft_py.c $(OBJ)/spy.o $(RAYLIB) $(SYSTEM) -lm -o $@
 
@@ -43,6 +57,32 @@ $(OBJ)/spyc: spy/spyc.c spy/spy.c spy/host.h
 $(OBJ)/spy: spy/cli.c spy/spy-std.c spy/spy-std.h spy/spy-std-modules.h $(OBJ)/spy.o
 	$(CC) $(CFLAGS) spy/cli.c spy/spy-std.c $(OBJ)/spy.o -lm -o $@
 
+# web/: index.html, smallcraft.js and smallcraft.wasm, for any static web
+# server. The bundle spyc wrote for the desktop is plain C, so the same
+# smallcraft_py.c compiles to WebAssembly.
+build-web: web/index.html
+web/index.html: index.html web/smallcraft.js
+	cp index.html $@
+	touch web/.nojekyll
+web/smallcraft.js: smallcraft.c noise.c noise.h $(OBJ)/smallcraft_py.c spy/spy.c $(OBJ)/web/libraylib.a
+	mkdir -p web
+	$(EMCC) $(WEB_CFLAGS) -Ispy -I$(RAYLIB_WEB) smallcraft.c noise.c $(OBJ)/smallcraft_py.c spy/spy.c \
+		$(OBJ)/web/libraylib.a $(WEB_LDFLAGS) -o $@
+
+$(OBJ)/web/libraylib.a: $(RAYLIB_WEB)/raylib.h
+	mkdir -p $(OBJ)/web
+	for m in $(RAYLIB_MODULES); do \
+		$(EMCC) $(RAYLIB_WEB_CFLAGS) -c $(RAYLIB_WEB)/$$m.c -o $(OBJ)/web/$$m.o || exit 1; done
+	emar rcs $@ $(RAYLIB_MODULES:%=$(OBJ)/web/%.o)
+$(RAYLIB_WEB)/raylib.h:
+	mkdir -p $(OBJ)
+	curl -sSfL https://github.com/raysan5/raylib/archive/refs/tags/$(RAYLIB_VERSION).tar.gz | tar xz -C $(OBJ)
+	touch $@
+
+# Publish web/ as the gh-pages branch of origin.
+deploy-pages: build-web
+	tools/deploy-pages.sh web
+
 run: smallcraft
 	./smallcraft
 
@@ -54,6 +94,6 @@ test: $(OBJ)/spy
 	cd $(OBJ)/test && ../spy test_game.py
 
 clean:
-	rm -rf smallcraft $(OBJ) assets
+	rm -rf smallcraft web $(OBJ) assets
 
-.PHONY: run test clean
+.PHONY: build build-binary build-web deploy-pages run test clean

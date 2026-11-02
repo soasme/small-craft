@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Small Craft</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+  #status { position: fixed; inset: 0; display: grid; place-items: center;
+            color: #ddd; font: 16px system-ui, sans-serif; pointer-events: none; }
+</style>
+</head>
+<body>
+<canvas id="canvas" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
+<div id="status">Loading Small Craft…</div>
+<script>
+  // smallcraft.js (Emscripten) reads this. Click the page to capture the
+  // mouse; Esc releases it.
+  var Module = {
+    canvas: document.getElementById("canvas"),
+    setStatus: function (text) {
+      document.getElementById("status").textContent = text || "";
+    },
+    onRuntimeInitialized: function () { Module.setStatus(""); },
+  };
+</script>
+<script async src="smallcraft.js"></script>
+</body>
+</html>

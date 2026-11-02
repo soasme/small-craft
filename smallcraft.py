@@ -112,19 +112,23 @@ def main():
     view = Renderer()
     m = Model(store)
     controls = Input()
-    previous = last_commit = rl.get_time()
-    while not rl.window_should_close():
+    clock = {"previous": rl.get_time(), "commit": rl.get_time()}
+
+    def frame():
         now = rl.get_time()
-        dt = min(max(now - previous, 0), 0.2)
-        previous = now
+        dt = min(max(now - clock["previous"], 0), 0.2)
+        clock["previous"] = now
         controls.handle(m, dt)
-        if now - last_commit > COMMIT_INTERVAL:
-            last_commit = now
+        if now - clock["commit"] > COMMIT_INTERVAL:
+            clock["commit"] = now
             store.save((m.x, m.y, m.z, m.rx, m.ry))
         m.delete_chunks()
         view.draw(m, controls.typing)
-    store.save((m.x, m.y, m.z, m.rx, m.ry))
-    rl.close_window()
+
+    # In a browser, run returns at once and the page calls frame from then on.
+    if rl.run(frame):
+        store.save((m.x, m.y, m.z, m.rx, m.ry))
+        rl.close_window()
 
 
 main()

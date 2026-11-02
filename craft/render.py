@@ -20,8 +20,9 @@ class Renderer:
     def __init__(self):
         self.atlas = rl.load_texture(TEXTURE_PNG, False)
         self.sky = rl.load_texture(SKY_PNG, True)
-        self.block_shader = rl.load_shader(BLOCK_VERTEX, BLOCK_FRAGMENT)
-        self.sky_shader = rl.load_shader(SKY_VERTEX, SKY_FRAGMENT)
+        glsl = rl.GLSL_HEADER
+        self.block_shader = rl.load_shader(glsl + BLOCK_VERTEX, glsl + BLOCK_FRAGMENT)
+        self.sky_shader = rl.load_shader(glsl + SKY_VERTEX, glsl + SKY_FRAGMENT)
         self.sky_mesh = rl.load_mesh(make_sphere(1, 3), 8)
         self.item_meshes = {}
 

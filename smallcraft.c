@@ -18,6 +18,9 @@
 #include <raylib.h>
 #include <rlgl.h>
 #include <stdarg.h>
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
 
 /* Convert positional arguments by format: 'n' number (double), 'i' integer,
  * 's' string, 'c' color, an (r, g, b) or (r, g, b, a) sequence of integers. */
@@ -114,9 +117,35 @@ static SPYValue *close_window(SPYContext *c, size_t argc, SPYValue *const *argv,
     CloseWindow();
     return spy_none(c);
 }
-static SPYValue *window_should_close(SPYContext *c, size_t argc, SPYValue *const *argv, SPYValue *kw, void *data) {
+/* run(frame): call frame() once a frame. On the desktop it returns True
+ * when the window closes. A browser runs the frames itself, between its
+ * own events, so on the web it returns False at once and frame runs later
+ * from emscripten's main loop (until it raises). */
+#ifdef __EMSCRIPTEN__
+static SPYContext *web_context;
+static SPYValue *web_frame;
+static void web_loop(void) {
+    SPYValue *result = spy_call(web_context, web_frame, 0, NULL);
+    if (!result) { host_exit_status(web_context); emscripten_cancel_main_loop(); }
+    spy_release(result);
+}
+#endif
+static SPYValue *run(SPYContext *c, size_t argc, SPYValue *const *argv, SPYValue *kw, void *data) {
     (void)data;
-    return args(c, argc, argv, kw, "") ? NULL : spy_bool(c, WindowShouldClose());
+    if (kw || argc != 1) return spy_error(c, "TypeError", "run takes a function");
+#ifdef __EMSCRIPTEN__
+    web_context = c;
+    web_frame = spy_retain(argv[0]);
+    emscripten_set_main_loop(web_loop, 0, 0);
+    return spy_bool(c, 0);
+#else
+    while (!WindowShouldClose()) {
+        SPYValue *result = spy_call(c, argv[0], 0, NULL);
+        if (!result) return NULL;
+        spy_release(result);
+    }
+    return spy_bool(c, 1);
+#endif
 }
 static SPYValue *get_time(SPYContext *c, size_t argc, SPYValue *const *argv, SPYValue *kw, void *data) {
     (void)data;
@@ -424,7 +453,7 @@ static SPYValue *end_invert(SPYContext *c, size_t argc, SPYValue *const *argv, S
 
 static const struct { const char *name; SPYNativeKeywords fn; } functions[] = {
     {"init_window", init_window}, {"close_window", close_window},
-    {"window_should_close", window_should_close}, {"get_time", get_time},
+    {"run", run}, {"get_time", get_time},
     {"get_fps", get_fps}, {"get_screen_size", get_screen_size},
     {"is_key_down", is_key_down}, {"is_key_pressed", is_key_pressed},
     {"get_char_pressed", get_char_pressed}, {"is_mouse_button_pressed", is_mouse_button_pressed},
@@ -458,7 +487,16 @@ static int set_owned(SPYContext *c, SPYValue *module, const char *name, SPYValue
     spy_release(v);
     return status ? -1 : 0;
 }
+/* What a shader's source starts with: GLSL 3.30 for desktop OpenGL, or
+ * GLSL ES 3.00 for WebGL 2, whose stages must agree on precision. */
+#ifdef __EMSCRIPTEN__
+static const char glsl_header[] = "#version 300 es\nprecision highp float;\nprecision highp int;\n";
+#else
+static const char glsl_header[] = "#version 330\n";
+#endif
+
 static int raylib_init(SPYContext *c, SPYValue *module) {
+    if (set_owned(c, module, "GLSL_HEADER", spy_string(c, glsl_header, strlen(glsl_header)))) return -1;
     for (size_t i = 0; i < sizeof(functions) / sizeof(*functions); i++)
         if (set_owned(c, module, functions[i].name, spy_native(c, functions[i].name, functions[i].fn, NULL, NULL))) return -1;
     for (size_t i = 0; i < sizeof(constants) / sizeof(*constants); i++)
@@ -512,9 +550,14 @@ int main(void) {
     spy_set_output(c, host_output, stdout);
     spy_set_flush(c, host_flush);
     spy_set_module_loader(c, smallcraft_load, NULL);
-    int status = spy_mount(c, ".", NULL, 0)
-        || spy_new_module(c, "raylib", raylib_init) || spy_new_module(c, "noise", noise_init)
+    /* Without the mount (a read-only directory, say) the game plays unsaved. */
+    spy_mount(c, ".", NULL, 0);
+    int status = spy_new_module(c, "raylib", raylib_init) || spy_new_module(c, "noise", noise_init)
         || spy_new_module(c, "libm", libm_init) || spy_exec(c, spy_smallcraft, "smallcraft.py") ? host_exit_status(c) : 0;
+#ifdef __EMSCRIPTEN__
+    /* The browser goes on calling the frames: keep the context. */
+    if (!status) return 0;
+#endif
     if (IsWindowReady()) CloseWindow();
     spy_context_free(c);
     return status < 0 ? 1 : status;

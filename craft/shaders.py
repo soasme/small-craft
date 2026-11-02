@@ -1,9 +1,8 @@
-"""The block and sky shaders, in GLSL 3.30 as raylib's desktop OpenGL
-takes it. raylib names the attributes; texture0 and texture1 are the two
-textures draw_mesh binds."""
+"""The block and sky shaders, to follow raylib.GLSL_HEADER: GLSL 3.30 on
+the desktop, GLSL ES 3.00 in a browser. raylib names the attributes;
+texture0 and texture1 are the two textures draw_mesh binds."""
 
-BLOCK_VERTEX = """#version 330
-uniform mat4 matrix;
+BLOCK_VERTEX = """uniform mat4 matrix;
 uniform vec3 camera;
 uniform float fog_distance;
 uniform int ortho;
@@ -39,13 +38,12 @@ void main() {
         fog_factor = pow(clamp(camera_distance / fog_distance, 0.0, 1.0), 4.0);
         float dy = position.y - camera.y;
         float dx = distance(position.xz, camera.xz);
-        fog_height = (atan(dy, dx) + pi / 2) / pi;
+        fog_height = (atan(dy, dx) + pi / 2.0) / pi;
     }
 }
 """
 
-BLOCK_FRAGMENT = """#version 330
-uniform sampler2D texture0;  // the block atlas
+BLOCK_FRAGMENT = """uniform sampler2D texture0;  // the block atlas
 uniform sampler2D texture1;  // the sky
 uniform float timer;
 uniform float daylight;
@@ -84,8 +82,7 @@ void main() {
 }
 """
 
-SKY_VERTEX = """#version 330
-uniform mat4 matrix;
+SKY_VERTEX = """uniform mat4 matrix;
 
 in vec3 vertexPosition;
 in vec2 vertexTexCoord;
@@ -98,8 +95,7 @@ void main() {
 }
 """
 
-SKY_FRAGMENT = """#version 330
-uniform sampler2D texture0;
+SKY_FRAGMENT = """uniform sampler2D texture0;
 uniform float timer;
 
 in vec2 fragment_uv;
