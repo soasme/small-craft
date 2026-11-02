@@ -147,13 +147,15 @@ def lighting(face, lights):
     return [(lights[k0] + lights[k1] + lights[k2] + lights[k3]) / 60 for _, _, _, k0, k1, k2, k3 in CORNERS[face]]
 
 
-def compute_chunk(chunk, light=None):
-    """The vertices of every face of the chunk that is not hidden by an
-    opaque neighbour, with its corners darkened by the blocks around and
-    above them. light, when the chunk is lit, maps an index to its light
-    level. A generator: it pauses every few blocks so that the caller can
-    spread the work over frames, and returns the vertices, the face count,
-    and the lowest and highest block drawn."""
+def compute_chunk(chunk, data, light=None):
+    """Append to data the vertices of every face of the chunk that is not
+    hidden by an opaque neighbour, with its corners darkened by the blocks
+    around and above them. light, when the chunk is lit, maps an index to
+    its light level. A generator: it pauses every few blocks so that the
+    caller can spread the work over frames, and returns the face count and
+    the lowest and highest block drawn. (The vertices are not returned: the
+    engine formats a generator's return value when it finishes, which for
+    a whole chunk's vertices takes longer than a frame.)"""
     blocks = chunk.blocks
     opaque = blocks.translate(OPAQUE)
     shades_of = shade_levels(opaque)
@@ -164,7 +166,6 @@ def compute_chunk(chunk, light=None):
     layers = len(blocks) // L - HEADROOM
     inside = number(bytes(L) + INSIDE * layers)
     candidates = (number(blocks.translate(NONEMPTY)) & ~covered & inside).to_bytes(len(blocks), "little")
-    data = []
     faces, miny, maxy = 0, 256, 0
     i = candidates.find(1)
     visited = 0
@@ -197,4 +198,4 @@ def compute_chunk(chunk, light=None):
                 faces += shown.count(True)
             miny, maxy = min(miny, y), max(maxy, y)
         i = candidates.find(1, i + 1)
-    return data, faces, miny, maxy
+    return faces, miny, maxy

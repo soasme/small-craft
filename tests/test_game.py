@@ -129,7 +129,8 @@ def test_mesh():
     chunk.fill(5, 5, 5, GRASS)
     chunk.set(5, 5, 5, TALL_GRASS)
     chunk.set(9, 70, 9, CLOUD)
-    data, faces, miny, maxy = finish(compute_chunk(chunk))
+    data = []
+    faces, miny, maxy = finish(compute_chunk(chunk, data))
     # The column shows four sides and a top; the plant four quads; the
     # cloud all six faces.
     assert (faces, miny, maxy) == (5 * 4 + 1 + 4 + 6, 0, 70) and len(data) == faces * 60

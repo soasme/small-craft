@@ -27,7 +27,8 @@ game's tests without a window.
 
 `make build-web` builds the same game for the browser with Emscripten
 (`emcc` on the path, or `docker run --rm -v "$PWD":/src -w /src
-emscripten/emsdk:4.0.10 make build-web`): it fetches raylib 5.5's sources,
+emscripten/emsdk:4.0.10 make build-web` after a native `make
+build-binary`, since the container cannot run the native bundler): it fetches raylib 5.5's sources,
 builds them for WebGL 2, and writes a static site to `web/` (`index.html`,
 `smallcraft.js`, `smallcraft.wasm`, `card.png`). Serve that directory from
 any static web server. `make build` makes both. In the browser the world is

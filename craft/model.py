@@ -138,7 +138,8 @@ class Model:
         is dropped if the chunk changed or was unloaded meanwhile."""
         version = chunk.version
         light = self.light_map(chunk) if self.has_lights(chunk) else None
-        data, faces, miny, maxy = yield from compute_chunk(chunk, light)
+        data = []
+        faces, miny, maxy = yield from compute_chunk(chunk, data, light)
         if chunk.version != version or self.chunks.get((chunk.p, chunk.q)) is not chunk:
             return
         if chunk.mesh is not None:
