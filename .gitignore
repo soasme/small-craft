@@ -1,0 +1,5 @@
+smallcraft
+.obj/
+assets
+craft.txt
+__pycache__/
