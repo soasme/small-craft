@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Small Craft</title>
+<meta name="description" content="Build and explore a block world, in your browser. The game is Python, running on the Small Python engine compiled to WebAssembly.">
+<!-- An X player card: a post linking this page shows the game in a frame
+     that plays it. make build-web fills in the site address and the X
+     account (SITE_URL, X_SITE). -->
+<meta name="twitter:card" content="player">
+<meta name="twitter:title" content="Small Craft">
+<meta name="twitter:description" content="Build and explore a block world, in your browser.">
+<meta name="twitter:image" content="https://www.soasme.com/small-craft/card.png">
+<meta name="twitter:image:alt" content="Grassy hills, trees and clouds made of blocks">
+<meta name="twitter:player" content="https://www.soasme.com/small-craft/">
+<meta name="twitter:player:width" content="480">
+<meta name="twitter:player:height" content="270">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Small Craft">
+<meta property="og:description" content="Build and explore a block world, in your browser.">
+<meta property="og:url" content="https://www.soasme.com/small-craft/">
+<meta property="og:image" content="https://www.soasme.com/small-craft/card.png">
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+  #status { position: fixed; inset: 0; display: grid; place-items: center;
+            color: #ddd; font: 16px system-ui, sans-serif; pointer-events: none; }
+</style>
+</head>
+<body>
+<canvas id="canvas" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
+<div id="status">Loading Small Craft…</div>
+<script>
+  // smallcraft.js (Emscripten) reads this. Click the page to capture the
+  // mouse; Esc releases it.
+  var Module = {
+    canvas: document.getElementById("canvas"),
+    setStatus: function (text) {
+      document.getElementById("status").textContent = text || "";
+    },
+    onRuntimeInitialized: function () { Module.setStatus(""); },
+  };
+</script>
+<script async src="smallcraft.js"></script>
+</body>
+</html>
