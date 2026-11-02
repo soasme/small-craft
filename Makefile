@@ -66,7 +66,7 @@ $(OBJ)/spy: spy/cli.c spy/spy-std.c spy/spy-std.h spy/spy-std-modules.h $(OBJ)/s
 # server. The bundle spyc wrote for the desktop is plain C, so the same
 # smallcraft_py.c compiles to WebAssembly.
 build-web: web/index.html
-web/index.html: index.html card.png web/smallcraft.js
+web/index.html: index.html card.png Makefile web/smallcraft.js
 	sed -e 's|@URL@|$(SITE_URL)|g' $(if $(X_SITE),-e 's|@X_SITE@|$(X_SITE)|g',-e '/@X_SITE@/d') index.html > $@
 	cp card.png web/
 	touch web/.nojekyll
