@@ -46,7 +46,9 @@ class Renderer:
         faces = self.render_chunks(m, matrix, timer)
         if SHOW_WIREFRAME:
             self.render_wireframe(m, matrix)
-        rl.set_depth(False, False)
+        # Depth writes stay on: with them off, the next frame's clear would
+        # leave this frame's depth behind.
+        rl.set_depth(False, True)
         if SHOW_CROSSHAIRS:
             render_crosshairs(width, height)
         if SHOW_ITEM:

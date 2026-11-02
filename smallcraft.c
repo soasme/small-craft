@@ -157,7 +157,7 @@ static SPYValue *is_mouse_button_pressed(SPYContext *c, size_t argc, SPYValue *c
 static SPYValue *get_mouse_delta(SPYContext *c, size_t argc, SPYValue *const *argv, SPYValue *kw, void *data) {
     (void)data;
     if (args(c, argc, argv, kw, "")) return NULL;
-    Vector2 d = GetMouseDelta();
+    Vector2 d = getenv("SMALLCRAFT_SHOT") ? (Vector2){0, 0} : GetMouseDelta(); /* DEBUG */
     SPYValue *xy[2] = {spy_float(c, d.x), spy_float(c, d.y)};
     SPYValue *result = xy[0] && xy[1] ? spy_tuple(c, 2, xy) : NULL;
     spy_release(xy[0]); spy_release(xy[1]);
