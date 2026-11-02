@@ -23,6 +23,12 @@ class Chunk:
         self.faces = 0
         self.miny, self.maxy = 0, 0
         self.dirty = True
+        self.version = 0  # counts the changes that call for a new mesh
+
+    def touch(self):
+        """Mark the mesh out of date."""
+        self.dirty = True
+        self.version += 1
 
     def index(self, x, y, z):
         """Where block (x, y, z) is in blocks, or -1 outside this chunk.
@@ -60,9 +66,8 @@ class Chunk:
             self.blocks += bytes(need - len(self.blocks))
 
 
-# Index offsets of the 27 blocks around and including a block, x, y and z
-# each running -1, 0, 1, as occlusion numbers them.
-NEIGHBORS = [dx * S + dy * L + dz for dx in (-1, 0, 1) for dy in (-1, 0, 1) for dz in (-1, 0, 1)]
+# The 27 blocks around and including a block are numbered with x, y and z
+# each running -1, 0, 1, z fastest.
 # For each face and corner: the corner neighbour and the two side neighbours
 # that darken it, then the four neighbours whose shade and light it averages.
 LOOKUP3 = (
@@ -83,80 +88,113 @@ LOOKUP4 = (
 )
 CORNERS = [[(*LOOKUP3[i][j], *LOOKUP4[i][j]) for j in range(4)] for i in range(6)]
 CURVE = (0.0, 0.25, 0.5, 0.75)
-NO_LIGHT = (0, 0, 0, 0)
+NO_LIGHT = (0, 0, 0, 0)  # also no occlusion, for faces not drawn
+# The 27 neighbours as nine runs of three, z running fastest: each run
+# starts at one of these offsets.
+RUNS = [dx * S + dy * L - 1 for dx in (-1, 0, 1) for dy in (-1, 0, 1)]
+# Tables for bytes.translate.
+NONEMPTY = bytes([0] + [1] * 255)
+EIGHT = bytes([0, 8] + [0] * 254)
+FADE = bytes(max(v - 1, 0) for v in range(256))
+CAP = bytes(min(v, 8) for v in range(256))
+# 1 at the 32 x 32 columns of a layer that belong to the chunk.
+INSIDE = bytes(1 if 0 < i // S < S - 1 and 0 < i % S < S - 1 else 0 for i in range(L))
 
 
-def occlusion(face, neighbors, shades, lights):
-    """Occlusion for one face: the ambient occlusion and light of
-    its four corners."""
-    ao, light = [], NO_LIGHT if lights is None else []
+def number(data):
+    """A bytes-like object as one integer, a byte to each 8 bits, so that
+    shifts and bitwise operators work on every byte at once."""
+    return int.from_bytes(data, "little")
+
+
+def runs(data, i):
+    return (data[i + RUNS[0]:i + RUNS[0] + 3] + data[i + RUNS[1]:i + RUNS[1] + 3] + data[i + RUNS[2]:i + RUNS[2] + 3]
+            + data[i + RUNS[3]:i + RUNS[3] + 3] + data[i + RUNS[4]:i + RUNS[4] + 3] + data[i + RUNS[5]:i + RUNS[5] + 3]
+            + data[i + RUNS[6]:i + RUNS[6] + 3] + data[i + RUNS[7]:i + RUNS[7] + 3] + data[i + RUNS[8]:i + RUNS[8] + 3])
+
+
+def shade_levels(opaque):
+    """For each block, 8 - n where the nearest opaque block at most seven
+    above it is n above (0 when there is none). A layer's level is 8 where
+    it is opaque, else one less than the level above; the OR of 8 with a
+    smaller level, capped at 8, picks the 8."""
+    levels = bytearray(len(opaque))
+    above = bytes(L)
+    for base in range(len(opaque) - L, -1, -L):
+        level = number(above.translate(FADE)) | number(opaque[base:base + L].translate(EIGHT))
+        above = level.to_bytes(L, "little").translate(CAP)
+        levels[base:base + L] = above
+    return levels
+
+
+def occlusion(face, neighbors, shades):
+    """The ambient occlusion of a face's four corners: darker for each
+    opaque block beside or diagonal to the corner, and under opaque blocks
+    above. shades are shade levels (see shade_levels)."""
+    ao = []
     for c, s1, s2, k0, k1, k2, k3 in CORNERS[face]:
         side1, side2 = neighbors[s1], neighbors[s2]
-        value = 3 if side1 and side2 else neighbors[c] + side1 + side2
-        ao.append(min(CURVE[value] + (shades[k0] + shades[k1] + shades[k2] + shades[k3]) / 4, 1))
-        if lights is not None:
-            total = 600 if lights[13] == 15 else lights[k0] + lights[k1] + lights[k2] + lights[k3]
-            light.append(total / 60)
-    return ao, light
+        dark = 0.75 if side1 and side2 else CURVE[neighbors[c] + side1 + side2]
+        ao.append(min(dark + (shades[k0] + shades[k1] + shades[k2] + shades[k3]) / 32, 1))
+    return ao
+
+
+def lighting(face, lights):
+    """The light of a face's four corners: the average level of the four
+    blocks around each, or full light on a lamp itself."""
+    if lights[13] == 15:
+        return [10] * 4
+    return [(lights[k0] + lights[k1] + lights[k2] + lights[k3]) / 60 for _, _, _, k0, k1, k2, k3 in CORNERS[face]]
 
 
 def compute_chunk(chunk, light=None):
-    """The vertices of every face of the chunk that
-    is not hidden by an opaque neighbour, with its corners darkened by the
-    blocks around and above them. light, when the chunk is lit, maps an
-    index to its light level. Return the vertices, the face count, and the
-    lowest and highest block drawn."""
+    """The vertices of every face of the chunk that is not hidden by an
+    opaque neighbour, with its corners darkened by the blocks around and
+    above them. light, when the chunk is lit, maps an index to its light
+    level. A generator: it pauses every few blocks so that the caller can
+    spread the work over frames, and returns the vertices, the face count,
+    and the lowest and highest block drawn."""
     blocks = chunk.blocks
     opaque = blocks.translate(OPAQUE)
-    shade_of = {}
-
-    def shade(j):
-        # Darkened by the nearest opaque block at most seven above.
-        s = shade_of.get(j)
-        if s is None:
-            s = 0
-            for oy in range(8):
-                if opaque[j + oy * L]:
-                    s = 1 - oy * 0.125
-                    break
-            shade_of[j] = s
-        return s
-
+    shades_of = shade_levels(opaque)
+    # The blocks of the chunk with an open neighbour, found for all blocks
+    # at once; the loop below visits only these.
+    o = number(opaque)
+    covered = o >> 8 & o << 8 & o >> 8 * S & o << 8 * S & o >> 8 * L & o << 8 * L
+    layers = len(blocks) // L - HEADROOM
+    inside = number(bytes(L) + INSIDE * layers)
+    candidates = (number(blocks.translate(NONEMPTY)) & ~covered & inside).to_bytes(len(blocks), "little")
     data = []
     faces, miny, maxy = 0, 256, 0
-    for ly in range(1, len(blocks) // L - HEADROOM + 1):
-        base = ly * L
-        if blocks.count(0, base + S, base + L - S) == L - 2 * S:
-            continue
-        y = ly - 1
-        for lx in range(1, S - 1):
-            row = base + lx * S
-            x = chunk.x0 + lx
-            for i in range(row + 1, row + S - 1):
-                w = blocks[i]
-                if not w:
-                    continue
-                shown = (not opaque[i - S], not opaque[i + S], not opaque[i + L],
-                         not opaque[i - L] and y > 0, not opaque[i - 1], not opaque[i + 1])
-                if True not in shown:
-                    continue
-                z = chunk.z0 + i - row
-                neighbors = [opaque[i + o] for o in NEIGHBORS]
-                shades = [shade(i + o) for o in NEIGHBORS]
-                lights = None if light is None else [light.get(i + o, 0) for o in NEIGHBORS]
-                if w in PLANTS:
-                    corners = [occlusion(f, neighbors, shades, lights) for f in range(6)]
-                    ao = min(min(a) for a, _ in corners)
-                    lit = max(max(l) for _, l in corners)
-                    make_plant(data, ao, lit, x, y, z, 0.5, w, simplex2(x, z, 4, 0.5, 2) * 360)
-                    faces += 4
-                else:
-                    ao, lit = [], []
-                    for f in range(6):
-                        a, l = occlusion(f, neighbors, shades, lights) if shown[f] else (NO_LIGHT, NO_LIGHT)
-                        ao.append(a)
-                        lit.append(l)
-                    make_cube(data, ao, lit, shown, x, y, z, 0.5, w)
-                    faces += shown.count(True)
-                miny, maxy = min(miny, y), max(maxy, y)
+    i = candidates.find(1)
+    visited = 0
+    while i >= 0:
+        visited += 1
+        if visited % 64 == 0:
+            yield
+        w = blocks[i]
+        y, rest = divmod(i, L)
+        y -= 1
+        lx, lz = divmod(rest, S)
+        shown = (not opaque[i - S], not opaque[i + S], not opaque[i + L],
+                 not opaque[i - L] and y > 0, not opaque[i - 1], not opaque[i + 1])
+        if True in shown:
+            x, z = chunk.x0 + lx, chunk.z0 + lz
+            neighbors = runs(opaque, i)
+            shades = runs(shades_of, i)
+            lights = None if light is None else [light.get(i + o + 1 + dz, 0) for o in RUNS for dz in (-1, 0, 1)]
+            if w in PLANTS:
+                # A plant takes the darkest occlusion and brightest light
+                # of all six faces.
+                ao = min(min(occlusion(f, neighbors, shades)) for f in range(6))
+                lit = 0 if lights is None else max(max(lighting(f, lights)) for f in range(6))
+                make_plant(data, ao, lit, x, y, z, 0.5, w, simplex2(x, z, 4, 0.5, 2) * 360)
+                faces += 4
+            else:
+                ao = [occlusion(f, neighbors, shades) if shown[f] else NO_LIGHT for f in range(6)]
+                lit = [NO_LIGHT if lights is None or not shown[f] else lighting(f, lights) for f in range(6)]
+                make_cube(data, ao, lit, shown, x, y, z, 0.5, w)
+                faces += shown.count(True)
+            miny, maxy = min(miny, y), max(maxy, y)
+        i = candidates.find(1, i + 1)
     return data, faces, miny, maxy

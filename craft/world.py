@@ -7,8 +7,11 @@ from .item import CLOUD, GRASS, LEAVES, SAND, TALL_GRASS, WOOD, YELLOW_FLOWER
 
 
 def create_world(chunk):
+    """Fill chunk with terrain, a row of columns at a time; a generator, so
+    that the caller can spread the work over frames."""
     p, q = chunk.p, chunk.q
     for dx in range(-1, CHUNK_SIZE + 1):
+        yield
         x = p * CHUNK_SIZE + dx
         for dz in range(-1, CHUNK_SIZE + 1):
             z = q * CHUNK_SIZE + dz

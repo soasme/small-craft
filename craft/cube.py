@@ -47,10 +47,10 @@ def make_cube_faces(data, ao, light, faces, tiles, x, y, z, n):
         du, dv = tile % 16 * S, tile // 16 * S
         a, l = ao[i], light[i]
         nx, ny, nz = NORMALS[i]
-        corners = CORNERS[i]
+        corners = [(x + n * px, y + n * py, z + n * pz, nx, ny, nz, du + u, dv + v, a[j], l[j])
+                   for j, (px, py, pz, u, v) in enumerate(CORNERS[i])]
         for j in FLIPPED[i] if a[0] + a[3] > a[1] + a[2] else INDICES[i]:
-            px, py, pz, u, v = corners[j]
-            data += (x + n * px, y + n * py, z + n * pz, nx, ny, nz, du + u, dv + v, a[j], l[j])
+            data += corners[j]
 
 
 def make_cube(data, ao, light, faces, x, y, z, n, w):

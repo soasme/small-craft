@@ -9,6 +9,15 @@ from .world import create_world
 import raylib as rl
 
 
+def finish(job):
+    """Run a generator to its end; return what it returns."""
+    while True:
+        try:
+            next(job)
+        except StopIteration as stop:
+            return stop.value
+
+
 def roundf(x):
     """C's roundf: halves round away from zero, unlike Python's round."""
     return int(x + 0.5) if x >= 0 else -int(0.5 - x)
@@ -36,6 +45,7 @@ class Model:
         self.ortho, self.fov = 0, 65
         self.day_length = DAY_LENGTH
         self.messages = []
+        self.job = None  # the chunk being loaded, a generator
         # The last two blocks edited, and the two copied, as (x, y, z, w).
         self.block0 = self.block1 = self.copy0 = self.copy1 = (0, 0, 0, 0)
         self.force_chunks()
@@ -64,13 +74,15 @@ class Model:
 
     def create_chunk(self, p, q):
         """Generate a chunk, then replay the edits saved for it and its
-        neighbours."""
+        neighbours. A generator; it returns the chunk."""
         chunk = Chunk(p, q)
-        create_world(chunk)
+        yield from create_world(chunk)
         for dp in (-1, 0, 1):
             for dq in (-1, 0, 1):
                 for (x, y, z), w in self.store.blocks.get((p + dp, q + dq), {}).items():
                     chunk.set(x, y, z, w)
+        if (p, q) in self.chunks:  # made meanwhile, by force_chunks
+            return self.chunks[p, q]
         self.chunks[p, q] = chunk
         self.dirty_chunk(chunk)
         return chunk
@@ -80,13 +92,13 @@ class Model:
                    for dp in (-1, 0, 1) for dq in (-1, 0, 1))
 
     def dirty_chunk(self, chunk):
-        chunk.dirty = True
+        chunk.touch()
         if self.has_lights(chunk):
             for dp in (-1, 0, 1):
                 for dq in (-1, 0, 1):
                     other = self.find_chunk(chunk.p + dp, chunk.q + dq)
                     if other:
-                        other.dirty = True
+                        other.touch()
 
     def light_map(self, chunk):
         """Flood fill the light of every lamp in and around chunk, each
@@ -122,12 +134,22 @@ class Model:
         return light
 
     def gen_chunk_buffer(self, chunk):
+        """Mesh the chunk and send the mesh to the GPU. A generator; the mesh
+        is dropped if the chunk changed or was unloaded meanwhile."""
+        version = chunk.version
         light = self.light_map(chunk) if self.has_lights(chunk) else None
-        data, chunk.faces, chunk.miny, chunk.maxy = compute_chunk(chunk, light)
+        data, faces, miny, maxy = yield from compute_chunk(chunk, light)
+        if chunk.version != version or self.chunks.get((chunk.p, chunk.q)) is not chunk:
+            return
         if chunk.mesh is not None:
             rl.unload_mesh(chunk.mesh)
         chunk.mesh = rl.load_mesh(data, 10) if data else None
+        chunk.faces, chunk.miny, chunk.maxy = faces, miny, maxy
         chunk.dirty = False
+
+    def load_chunk(self, p, q):
+        chunk = self.find_chunk(p, q) or (yield from self.create_chunk(p, q))
+        yield from self.gen_chunk_buffer(chunk)
 
     def force_chunks(self):
         """Build the chunks around the player at once, so they are never
@@ -135,31 +157,41 @@ class Model:
         p, q = chunked(self.x), chunked(self.z)
         for a in (p - 1, p, p + 1):
             for b in (q - 1, q, q + 1):
-                chunk = self.find_chunk(a, b) or self.create_chunk(a, b)
-                if chunk.dirty:
-                    self.gen_chunk_buffer(chunk)
+                chunk = self.find_chunk(a, b)
+                if not chunk or chunk.dirty:
+                    finish(self.load_chunk(a, b))
 
     def ensure_chunks(self, planes, deadline):
-        """Create or rebuild the chunks within create_radius, at least one
-        and more until the deadline: first those in view, then those already
-        drawn but stale, nearest first."""
+        """Create or rebuild the chunks within create_radius until the
+        deadline, one at a time, resuming next frame where this one stopped."""
         self.force_chunks()
+        while rl.get_time() < deadline:
+            if self.job is None:
+                self.job = self.next_job(planes)
+                if self.job is None:
+                    return
+            try:
+                next(self.job)
+            except StopIteration:
+                self.job = None
+
+    def next_job(self, planes):
+        """Load the missing or stale chunk that matters most: first those in
+        view, then those already drawn, nearest first."""
         p, q = chunked(self.x), chunked(self.z)
         r = self.create_radius
-        work = []
+        best = None
         for a in range(p - r, p + r + 1):
             for b in range(q - r, q + r + 1):
                 chunk = self.find_chunk(a, b)
                 if chunk and not chunk.dirty:
                     continue
                 invisible = not chunk_visible(planes, a, b, 0, 256, self.ortho)
-                priority = bool(chunk and chunk.mesh is not None and chunk.dirty)
-                work.append((invisible << 24 | priority << 16 | max(abs(a - p), abs(b - q)), a, b))
-        work.sort()
-        for n, (_, a, b) in enumerate(work):
-            if n and rl.get_time() > deadline:
-                break
-            self.gen_chunk_buffer(self.find_chunk(a, b) or self.create_chunk(a, b))
+                priority = bool(chunk and chunk.mesh is not None)
+                score = invisible << 24 | priority << 16 | max(abs(a - p), abs(b - q))
+                if best is None or score < best[0]:
+                    best = score, a, b
+        return None if best is None else self.load_chunk(best[1], best[2])
 
     def delete_chunks(self):
         p, q = chunked(self.x), chunked(self.z)
@@ -224,7 +256,7 @@ class Model:
                 for dq in (-1, 0, 1):
                     other = self.find_chunk(p + dp, q + dq)
                     if other:
-                        other.dirty = True
+                        other.touch()
         self.store.changed = True
 
     def toggle_light(self, x, y, z):
