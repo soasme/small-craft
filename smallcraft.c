@@ -20,6 +20,7 @@
 #include <stdarg.h>
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
+#include <emscripten/html5.h>
 #endif
 
 /* Convert positional arguments by format: 'n' number (double), 'i' integer,
@@ -102,6 +103,11 @@ static size_t mesh_count;
 static SPYValue *init_window(SPYContext *c, size_t argc, SPYValue *const *argv, SPYValue *kw, void *data) {
     (void)data; double w, h; const char *title;
     if (args(c, argc, argv, kw, "nns", &w, &h, &title)) return NULL;
+#ifdef __EMSCRIPTEN__
+    /* In a page the canvas fills its frame (an X card, say): start at the
+     * size the page gave it; raylib follows later resizes. */
+    emscripten_get_element_css_size("#canvas", &w, &h);
+#endif
     SetConfigFlags(FLAG_VSYNC_HINT | FLAG_WINDOW_RESIZABLE);
     InitWindow((int)w, (int)h, title);
     SetExitKey(KEY_NULL);
@@ -183,6 +189,29 @@ static SPYValue *is_mouse_button_pressed(SPYContext *c, size_t argc, SPYValue *c
     (void)data; int button;
     return args(c, argc, argv, kw, "i", &button) ? NULL : spy_bool(c, IsMouseButtonPressed(button));
 }
+static SPYValue *is_mouse_button_down(SPYContext *c, size_t argc, SPYValue *const *argv, SPYValue *kw, void *data) {
+    (void)data; int button;
+    return args(c, argc, argv, kw, "i", &button) ? NULL : spy_bool(c, IsMouseButtonDown(button));
+}
+static SPYValue *is_mouse_button_released(SPYContext *c, size_t argc, SPYValue *const *argv, SPYValue *kw, void *data) {
+    (void)data; int button;
+    return args(c, argc, argv, kw, "i", &button) ? NULL : spy_bool(c, IsMouseButtonReleased(button));
+}
+/* get_touches(): the fingers on the screen, as (id, x, y) tuples. */
+static SPYValue *get_touches(SPYContext *c, size_t argc, SPYValue *const *argv, SPYValue *kw, void *data) {
+    (void)data;
+    if (args(c, argc, argv, kw, "")) return NULL;
+    SPYValue *list = spy_list(c);
+    for (int i = 0; list && i < GetTouchPointCount(); i++) {
+        Vector2 at = GetTouchPosition(i);
+        SPYValue *parts[3] = {spy_int(c, GetTouchPointId(i)), spy_float(c, at.x), spy_float(c, at.y)};
+        SPYValue *touch = parts[0] && parts[1] && parts[2] ? spy_tuple(c, 3, parts) : NULL;
+        if (!touch || spy_list_append(c, list, touch)) { spy_release(list); list = NULL; }
+        spy_release(touch);
+        for (int k = 0; k < 3; k++) spy_release(parts[k]);
+    }
+    return list;
+}
 static SPYValue *get_mouse_delta(SPYContext *c, size_t argc, SPYValue *const *argv, SPYValue *kw, void *data) {
     (void)data;
     if (args(c, argc, argv, kw, "")) return NULL;
@@ -234,6 +263,12 @@ static SPYValue *draw_rectangle(SPYContext *c, size_t argc, SPYValue *const *arg
     (void)data; double x, y, w, h; Color color;
     if (args(c, argc, argv, kw, "nnnnc", &x, &y, &w, &h, &color)) return NULL;
     DrawRectangleRec((Rectangle){(float)x, (float)y, (float)w, (float)h}, color);
+    return spy_none(c);
+}
+static SPYValue *draw_circle(SPYContext *c, size_t argc, SPYValue *const *argv, SPYValue *kw, void *data) {
+    (void)data; double x, y, r; Color color;
+    if (args(c, argc, argv, kw, "nnnc", &x, &y, &r, &color)) return NULL;
+    DrawCircleV((Vector2){(float)x, (float)y}, (float)r, color);
     return spy_none(c);
 }
 static SPYValue *draw_text(SPYContext *c, size_t argc, SPYValue *const *argv, SPYValue *kw, void *data) {
@@ -457,11 +492,14 @@ static const struct { const char *name; SPYNativeKeywords fn; } functions[] = {
     {"get_fps", get_fps}, {"get_screen_size", get_screen_size},
     {"is_key_down", is_key_down}, {"is_key_pressed", is_key_pressed},
     {"get_char_pressed", get_char_pressed}, {"is_mouse_button_pressed", is_mouse_button_pressed},
-    {"get_mouse_delta", get_mouse_delta}, {"get_mouse_wheel_move", get_mouse_wheel_move},
+    {"get_mouse_delta", get_mouse_delta},
+    {"is_mouse_button_down", is_mouse_button_down}, {"is_mouse_button_released", is_mouse_button_released},
+    {"get_touches", get_touches}, {"get_mouse_wheel_move", get_mouse_wheel_move},
     {"disable_cursor", disable_cursor}, {"enable_cursor", enable_cursor},
     {"is_cursor_hidden", is_cursor_hidden},
     {"begin_drawing", begin_drawing}, {"end_drawing", end_drawing},
     {"clear_background", clear_background}, {"draw_rectangle", draw_rectangle},
+    {"draw_circle", draw_circle},
     {"draw_text", draw_text}, {"measure_text", measure_text},
     {"load_texture", load_texture}, {"load_shader", load_shader}, {"set_uniform", set_uniform},
     {"load_mesh", load_mesh}, {"unload_mesh", unload_mesh}, {"draw_mesh", draw_mesh},

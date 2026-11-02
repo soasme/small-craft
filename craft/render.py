@@ -37,7 +37,7 @@ class Renderer:
             self.item_meshes[w] = rl.load_mesh(data, 10)
         return self.item_meshes[w]
 
-    def draw(self, m, typing):
+    def draw(self, m, typing, touch):
         width, height = rl.get_screen_size()
         timer = m.time_of_day()
         rl.begin_drawing()
@@ -55,6 +55,7 @@ class Renderer:
         if SHOW_ITEM:
             self.render_item(m, width, height)
         render_text(m, faces, typing)
+        touch.draw(width, height)
         rl.end_drawing()
 
     def render_sky(self, m, width, height, timer):

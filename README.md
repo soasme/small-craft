@@ -25,6 +25,17 @@ make run
 bundler `spyc` and command line `spy`, then the game. `make test` runs the
 game's tests without a window.
 
+`make build-web` builds the same game for the browser with Emscripten
+(`emcc` on the path, or `docker run --rm -v "$PWD":/src -w /src
+emscripten/emsdk:4.0.10 make build-web`): it fetches raylib 5.5's sources,
+builds them for WebGL 2, and writes a static site to `web/` (`index.html`,
+`smallcraft.js`, `smallcraft.wasm`, `card.png`). Serve that directory from
+any static web server. `make build` makes both. In the browser the world is
+not saved.
+
+`make deploy-pages` force-pushes `web/` to the repository's `gh-pages`
+branch; turn on GitHub Pages for that branch to publish it.
+
 On macOS arm64 with `-O2` the executable is 2.9 MB (2.7 MB stripped) and
 links only system frameworks (`otool -L smallcraft`).
 
@@ -46,6 +57,21 @@ links only system frameworks (`otool -L smallcraft`).
 | T | Type a message; Enter shows it |
 | / | Type a command; Enter runs it |
 | Esc | Release the mouse (click to capture it again) |
+
+Where the mouse cannot be captured, as inside an embedded frame, drag with
+the left button to look and click without dragging to break. On a touch
+screen a stick at the bottom left walks, buttons at the bottom right jump,
+break, place, choose the block and fly, and dragging anywhere else looks.
+
+### Playing in a post on X
+
+`index.html` carries an X player card: a post linking the published page
+shows the game in a frame that plays it. `make build-web` points the card
+at `SITE_URL` (default `https://soasme.github.io/small-craft/`) and names
+the X account in `X_SITE`, if set, for example
+`make build-web X_SITE=@handle`. The page must be served over HTTPS, and
+X decides whether to show a player card for a site; the card's image is
+`card.png`, a 1200x675 screenshot of the game.
 
 A day lasts ten minutes. The world, its lights and where you stand are saved
 to `craft.txt` in the working directory every five seconds and on quit.
@@ -70,7 +96,8 @@ the latest, `block1` the one before.
 
 | File | Holds |
 | --- | --- |
-| `smallcraft.py` | The main loop and the keyboard and mouse handlers |
+| `smallcraft.py` | The main loop and the keyboard, mouse and touch handlers |
+| `craft/touch.py` | The on-screen stick and buttons for touch screens |
 | `craft/config.py` | Window, view distance, day length, and what to show |
 | `craft/item.py` | Block types, the items you can place, and their texture tiles |
 | `craft/world.py` | Terrain generation from simplex noise |
@@ -83,6 +110,7 @@ the latest, `block1` the one before.
 | `craft/render.py`, `craft/shaders.py` | Drawing, and the GLSL block and sky shaders |
 | `smallcraft.c` | The host: registers the C modules `raylib`, `noise` and `libm`, runs the bundle |
 | `noise.c` | Fractal simplex noise |
+| `index.html` | The web page, with its X card; `tools/deploy-pages.sh` publishes the site |
 | `pack.py` | Turns `textures/*.png` into a module for the bundle, running on `spy` |
 | `spy/` | The Small Python engine, v0.5.0 (see `spy/VERSION`) |
 
@@ -98,7 +126,7 @@ big-integer bitwise operations.
 
 | Module | Functions |
 | --- | --- |
-| `raylib` | `init_window`, `close_window`, `window_should_close`, `get_time`, `get_fps`, `get_screen_size`; `is_key_down`, `is_key_pressed`, `get_char_pressed`, `is_mouse_button_pressed`, `get_mouse_delta`, `get_mouse_wheel_move`, `disable_cursor`, `enable_cursor`, `is_cursor_hidden`; `begin_drawing`, `end_drawing`, `clear_background`, `draw_rectangle`, `draw_text`, `measure_text`; `load_texture(png, smooth)`, `load_shader(vertex, fragment)`, `set_uniform(shader, name, value)`, `load_mesh(data, stride)`, `unload_mesh`, `draw_mesh(mesh, shader, texture0, texture1)`, `set_depth(test, write)`, `set_culling(on)`, `draw_lines(matrix, points, color)`, `begin_invert`, `end_invert`; `KEY_*` and `MOUSE_BUTTON_*` constants |
+| `raylib` | `init_window`, `close_window`, `run(frame)`, `get_time`, `get_fps`, `get_screen_size`; `is_key_down`, `is_key_pressed`, `get_char_pressed`, `is_mouse_button_pressed`, `is_mouse_button_down`, `is_mouse_button_released`, `get_mouse_delta`, `get_touches`, `get_mouse_wheel_move`, `disable_cursor`, `enable_cursor`, `is_cursor_hidden`; `begin_drawing`, `end_drawing`, `clear_background`, `draw_rectangle`, `draw_circle`, `draw_text`, `measure_text`; `load_texture(png, smooth)`, `load_shader(vertex, fragment)`, `set_uniform(shader, name, value)`, `load_mesh(data, stride)`, `unload_mesh`, `draw_mesh(mesh, shader, texture0, texture1)`, `set_depth(test, write)`, `set_culling(on)`, `draw_lines(matrix, points, color)`, `begin_invert`, `end_invert`; `KEY_*` and `MOUSE_BUTTON_*` constants |
 | `noise` | `simplex2(x, y, octaves, persistence, lacunarity)`, `simplex3(x, y, z, ...)` |
 | `libm` | `sin`, `cos`, `tan`, `acos`, `atan2` |
 

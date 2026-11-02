@@ -14,6 +14,11 @@ SYSTEM = -lGL -lpthread -ldl -lrt -lX11
 endif
 OBJ = .obj
 
+# Where the site is served, for the X card's links, and the X account it
+# belongs to (for example @soasme; empty leaves twitter:site out).
+SITE_URL = https://soasme.github.io/small-craft/
+X_SITE =
+
 # The web build: emcc (Emscripten), and raylib's sources, fetched once.
 EMCC = emcc
 RAYLIB_VERSION = 5.5
@@ -61,8 +66,9 @@ $(OBJ)/spy: spy/cli.c spy/spy-std.c spy/spy-std.h spy/spy-std-modules.h $(OBJ)/s
 # server. The bundle spyc wrote for the desktop is plain C, so the same
 # smallcraft_py.c compiles to WebAssembly.
 build-web: web/index.html
-web/index.html: index.html web/smallcraft.js
-	cp index.html $@
+web/index.html: index.html card.png web/smallcraft.js
+	sed -e 's|@URL@|$(SITE_URL)|g' $(if $(X_SITE),-e 's|@X_SITE@|$(X_SITE)|g',-e '/@X_SITE@/d') index.html > $@
+	cp card.png web/
 	touch web/.nojekyll
 web/smallcraft.js: smallcraft.c noise.c noise.h $(OBJ)/smallcraft_py.c spy/spy.c $(OBJ)/web/libraylib.a
 	mkdir -p web
